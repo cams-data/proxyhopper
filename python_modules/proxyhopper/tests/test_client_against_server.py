@@ -43,7 +43,7 @@ async def dispatcher_server(aiohttp_server, test_server):
 @pytest.mark.asyncio
 async def test_do_batch_request(dispatcher_server, test_server):
     dispatcher_url = f"http://localhost:{dispatcher_server.port}"
-    client = Client(dispatcher_url, concurrency=2)
+    client = Client(host=dispatcher_url, concurrency=2)
 
     test_data = {i :{"value": i} for i in range(5)}
 
