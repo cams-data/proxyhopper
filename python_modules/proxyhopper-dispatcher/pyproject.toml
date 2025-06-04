@@ -1,0 +1,39 @@
+[project]
+name = "proxyhopper-dispatcher"
+description = "Server for dispatching proxied HTTP requests"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+dependencies = [
+    "aiohttp",
+    "pydantic",
+    "pyyaml",
+    "click"
+    ]
+readme = "README.md"
+requires-python = ">=3.9"
+dynamic = ["version"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "LICENSE"]
+
+[tool.hatch.envs.default]
+dependencies = ["pytest"]
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-aiohttp",
+  "proxyhopper-dispatcher @ {root:parent:uri}/proxyhopper-dispatcher",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[project.scripts]
+proxyhopper = "proxyhopper_dispatcher.cli:cli"

@@ -1,0 +1,37 @@
+[project]
+name = "proxyhopper"
+description = "Python client for dispatching requests via rotating proxies"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+dependencies = ["aiohttp", "pydantic"]
+readme = "README.md"
+requires-python = ">=3.9"
+dynamic = ["version"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "LICENSE"]
+
+[tool.hatch.envs.default]
+dependencies = [
+  "pytest",
+  "proxyhopper-dispatcher @ {root:parent:uri}/proxyhopper-dispatcher",
+]
+
+[tool.hatch.envs.hatch-test]
+dependencies = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-aiohttp",
+  "proxyhopper-dispatcher @ {root:parent:uri}/proxyhopper-dispatcher",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.hatch.metadata]
+allow-direct-references = true
