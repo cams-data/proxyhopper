@@ -5,7 +5,7 @@ import asyncio
 from aiohttp import web
 from proxyhopper import Client
 from proxyhopper_dispatcher import DispatcherServer
-from proxyhopper_dispatcher import ProxyhopperConfig, TargetUrlConfig
+from proxyhopper_dispatcher import ProxyhopperConfig, BaseUrlConfig
 import tempfile
 
 
@@ -26,8 +26,8 @@ async def dispatcher_server(aiohttp_server, test_server):
     # Temporary proxy list — test server acts like a proxy target here
     config = ProxyhopperConfig(
         proxies=[f"localhost:{test_server.port}"],
-        target_urls={
-            f"http://localhost:{test_server.port}": TargetUrlConfig(
+        base_urls={
+            f"http://localhost:{test_server.port}": BaseUrlConfig(
                 min_request_interval=0.0
             )
         },
@@ -43,7 +43,7 @@ async def dispatcher_server(aiohttp_server, test_server):
 @pytest.mark.asyncio
 async def test_do_batch_request(dispatcher_server, test_server):
     dispatcher_url = f"http://localhost:{dispatcher_server.port}"
-    client = Client(host=dispatcher_url, concurrency=2)
+    client = Client(dispatcher_url, concurrency=2)
 
     test_data = {i :{"value": i} for i in range(5)}
 
@@ -56,16 +56,15 @@ async def test_do_batch_request(dispatcher_server, test_server):
     def response_handler(response, data):
         return response.get("received", {})
 
-    results = await client.send_batched_requests(
-        target_url=f"http://localhost:{test_server.port}",
+    results = await client.do_batch_request(
+        base_url=f"http://localhost:{test_server.port}",
         endpoint="/echo",
-        param_factory=params_builder,
+        params_builder=params_builder,
         headers={"Content-Type": "application/json"},
         data=test_data,
         method="POST",
-        body_factory=body_builder,
+        body_builder=body_builder,
         response_handler=response_handler,
-        on_failure='ignore'
     )
 
     assert isinstance(results, dict)
