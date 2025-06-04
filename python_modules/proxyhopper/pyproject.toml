@@ -12,8 +12,8 @@ description = "Python client for dispatching requests via rotating proxies"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 dependencies = [
     "aiohttp~=3.12.7",
-    "pydantic~=2.11.5"
-    "tqdm.asyncio>=4.48.0"
+    "pydantic~=2.11.5",
+    "tqdm.asyncio>=4.48.0",
     ]
 readme = "README.md"
 requires-python = ">=3.9"
