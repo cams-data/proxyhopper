@@ -5,7 +5,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer, loop_context
 import pytest_asyncio
 from proxyhopper_dispatcher import DispatcherServer
-from proxyhopper_dispatcher import ProxyhopperConfig, BaseUrlConfig
+from proxyhopper_dispatcher import ProxyhopperConfig, TargetUrlConfig
 
 @pytest.fixture
 def proxyhopper_config():
@@ -15,8 +15,8 @@ def proxyhopper_config():
 ],
         quarantine_time=1,
         max_quarantine_strikes=2,
-        base_urls={
-            "https://httpbin.org": BaseUrlConfig(min_request_interval=0)
+        target_urls={
+            "https://httpbin.org": TargetUrlConfig(min_request_interval=0)
         }
     )
 
@@ -31,7 +31,7 @@ async def test_client(proxyhopper_config):
 @pytest.mark.asyncio
 async def test_dispatch_success(test_client):
     payload = {
-        "base_url": "https://httpbin.org",
+        "target_url": "https://httpbin.org",
         "endpoint": "get",
         "method": "GET",
         "params": {},
@@ -45,7 +45,7 @@ async def test_dispatch_success(test_client):
 @pytest.mark.asyncio
 async def test_quarantine_on_500(test_client):
     payload = {
-        "base_url": "https://httpbin.org",
+        "target_url": "https://httpbin.org",
         "endpoint": "status/500",
         "method": "GET",
         "params": {},
@@ -66,7 +66,7 @@ async def test_quarantine_on_500(test_client):
     res2 = await resp2.json()
     assert resp2.status == 429
 
-    # Ensure proxy is now marked as permanent for that base_url
+    # Ensure proxy is now marked as permanent for that target_url
     ctx = test_client.server.app["dispatcher"].get_coro().cr_frame.f_locals["self"].ctx
     proxy_status = ctx["https://httpbin.org"].quarantine["123.123.123.123:8800"]
     assert proxy_status.strikes >= 2
@@ -75,7 +75,7 @@ async def test_quarantine_on_500(test_client):
 @pytest.mark.asyncio
 async def test_recover_from_quarantine(test_client, proxyhopper_config):
     payload = {
-        "base_url": "https://httpbin.org",
+        "target_url": "https://httpbin.org",
         "endpoint": "status/500",
         "method": "GET",
         "params": {},
