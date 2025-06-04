@@ -17,6 +17,12 @@ jobs:
               with:
                   python-version: "3.11"
 
+            - name: Verify .git
+              run: |
+                  ls -la
+                  ls -la .git
+                  git status
+
             - name: Install Hatch
               run: pip install hatch hatch-vcs
 
@@ -31,6 +37,7 @@ jobs:
                     if [ -f "$dir/pyproject.toml" ]; then
                       echo "Processing $dir"
                       cd "$dir"
+                      ln -s ../../.git .git
 
                       
 
