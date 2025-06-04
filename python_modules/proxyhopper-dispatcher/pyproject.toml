@@ -19,7 +19,8 @@ dynamic = ["version"]
 [tool.hatch.version]
 source = "vcs"
 
-
+[tool.hatch.version.raw-options]
+root = "../../"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/"]
@@ -35,7 +36,6 @@ dependencies = [
   "pytest",
   "pytest-asyncio",
   "pytest-aiohttp",
-  "proxyhopper-dispatcher @ {root:parent:uri}/proxyhopper-dispatcher",
 ]
 
 [tool.hatch.envs.hatch-test.env-vars]
