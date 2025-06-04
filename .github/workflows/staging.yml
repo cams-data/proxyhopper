@@ -39,6 +39,7 @@ jobs:
                       echo "::endgroup::"
 
                       echo "::group::Building project"
+                      echo "Detected version: $(hatch version)"
                       hatch build 2>&1 | tee hatch-build.log
                       echo "::endgroup::"
 
