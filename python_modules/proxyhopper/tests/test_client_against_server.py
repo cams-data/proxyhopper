@@ -56,7 +56,7 @@ async def test_do_batch_request(dispatcher_server, test_server):
     def response_handler(response, data):
         return response.get("received", {})
 
-    results = await client.do_batch_request(
+    results = await client.send_batched_requests(
         target_url=f"http://localhost:{test_server.port}",
         endpoint="/echo",
         param_factory=params_builder,
@@ -65,6 +65,7 @@ async def test_do_batch_request(dispatcher_server, test_server):
         method="POST",
         body_factory=body_builder,
         response_handler=response_handler,
+        on_failure='ignore'
     )
 
     assert isinstance(results, dict)
