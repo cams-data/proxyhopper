@@ -13,6 +13,10 @@ dynamic = ["version"]
 [tool.hatch.version]
 source = "vcs"
 
+[tool.setuptools_scm]
+root = "../../"
+relative_to = "pyproject.toml"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/"]
 
