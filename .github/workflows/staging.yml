@@ -36,7 +36,7 @@ jobs:
                       echo "::endgroup::"
 
                       echo "::group::Running tests"
-                      hatch --verbose test 2>&1 | tee hatch-test.log
+                      hatch test 2>&1 | tee hatch-test.log
                       echo "::endgroup::"
 
                       echo "::group::Building project"
