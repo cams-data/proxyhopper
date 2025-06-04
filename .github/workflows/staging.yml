@@ -53,3 +53,10 @@ jobs:
                       cd - > /dev/null
                     fi
                   done
+            - name: Upload Hatch logs
+              if: failure() # Only upload logs if the step failed
+              uses: actions/upload-artifact@v4
+              with:
+                  name: hatch-logs
+                  path: |
+                      python_modules/**/hatch-*.log
