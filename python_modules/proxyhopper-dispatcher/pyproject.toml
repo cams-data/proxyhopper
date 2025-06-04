@@ -28,7 +28,7 @@ source = "vcs"
 root = "../../"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/"]
+packages = ["src/proxyhopper_dispatcher"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/", "README.md", "LICENSE"]
