@@ -44,6 +44,9 @@ dependencies = [
   "proxyhopper-dispatcher @ {root:parent:uri}/proxyhopper-dispatcher",
 ]
 
+[tool.hatch.envs.hatch-test.env-vars]
+PYTHONPATH = "src"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
