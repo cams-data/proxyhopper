@@ -3,10 +3,10 @@ name = "proxyhopper-dispatcher"
 description = "Server for dispatching proxied HTTP requests"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 dependencies = [
-    "aiohttp",
-    "pydantic",
-    "pyyaml",
-    "click"
+    "aiohttp=^3.12.0",
+    "pydantic=^2.11.0",
+    "pyyaml=^6.0.0",
+    "click=^8.0.0"
     ]
 readme = "README.md"
 requires-python = ">=3.9"
