@@ -34,14 +34,16 @@ jobs:
                   set -x  # Enable debug output for each command
                   ROOT_DIR="$(pwd)"
                   export SETUPTOOLS_SCM_ROOT="$ROOT_DIR"
-
+                  for dir in python_modules/*; do
+                    if [ -f "$dir/pyproject.toml" ]; then
+                      echo "Processing $dir"
+                      (cd "$dir" && ln -sf ../../.git .git)
+                    fi
+                  done
                   for dir in python_modules/*; do
                     if [ -f "$dir/pyproject.toml" ]; then
                       echo "Processing $dir"
                       cd "$dir"
-                      ln -s ../../.git .git
-
-                      
 
                       echo "::group::Creating Hatch environment"
                       hatch env create 2>&1 | tee hatch-env-create.log
