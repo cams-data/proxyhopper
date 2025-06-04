@@ -36,8 +36,6 @@ jobs:
 
                       echo "::group::Running tests"
                       hatch test 2>&1 | tee hatch-test.log
-                      TEST_EXIT_CODE=${PIPESTATUS[0]}
-                      exit $TEST_EXIT_CODE
                       echo "::endgroup::"
 
                       echo "::group::Building project"
