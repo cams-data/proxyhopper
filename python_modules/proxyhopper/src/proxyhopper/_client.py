@@ -112,7 +112,8 @@ class Client:
         method: Literal['GET', 'POST'] = 'GET',
         body_factory: Optional[Callable[[dict], Any]] = None,
         response_handler: Callable[[dict, dict], T2],
-        on_failure:Literal['ignore', 'fail']
+        on_failure:Literal['ignore', 'fail'],
+        progress_reporting:Literal['bar','text','off'] = 'text'
     ) -> Dict[T1, T2]:
         ...
 
@@ -127,7 +128,8 @@ class Client:
         data: Dict[T1, dict],
         method: Literal['GET', 'POST'] = 'GET',
         body_factory: Optional[Callable[[dict], Any]] = None,
-        on_failure:Literal['ignore', 'fail']
+        on_failure:Literal['ignore', 'fail'],
+        progress_reporting:Literal['bar','text','off'] = 'text'
     ) -> Dict[T1, dict]:
         ...
 
@@ -142,7 +144,8 @@ class Client:
         method: Literal['GET', 'POST'] = 'GET',
         body_factory: Optional[Callable[[dict], Any]] = None,
         response_handler: Optional[Callable[[dict, dict], T2]] = None,
-        on_failure:Literal['ignore', 'fail']
+        on_failure:Literal['ignore', 'fail'],
+        progress_reporting:Literal['bar','text','off'] = 'text'
     ) -> Union[Dict[T1, dict],Dict[T1, T2]]:
         semaphore = asyncio.Semaphore(self.concurrency)
         results: Dict[T1, T2] = {}
@@ -175,8 +178,13 @@ class Client:
 
             tasks = [asyncio.create_task(worker(key, value)) for key, value in data.items()]
             # await asyncio.gather(*tasks)
-            for task in tqdm.asyncio.tqdm.as_completed(tasks, smoothing=0.1, total=len(data)):
+            tasks_completed = 0
+            for task in tqdm.asyncio.tqdm.as_completed(tasks, smoothing=0.1, total=len(data), disable=(progress_reporting != 'bar')):
                 await task
+                # Track tasks completed for progress reporting purposes
+                tasks_completed+=1
+                if progress_reporting == 'text' and tasks_completed%max(len(data)//20,1) == 0:
+                    self.logger.info(f'Completed {tasks_completed}/{len(data)} requests')
 
         if self.record_statistics:
             self.statistics.record_end()

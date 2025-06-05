@@ -18,7 +18,7 @@ class QuarantineEntry(BaseModel):
     """
     until: float = 0
     strikes: int = 0
-    permanent: bool = False
+    next_duration: float = 2
 
 class TargetContext(BaseModel):
     queue: Deque[Tuple[dict, Any]] = Field(default_factory=deque)
@@ -116,12 +116,29 @@ class DispatcherServer:
     def create_app(self) -> web.Application:
         app = web.Application()
         app.router.add_post("/dispatch", self.dispatch_request)
+        app.router.add_get("/health-check", self.health_check)
+        app.router.add_get("/targets", self.targets)
         app.on_startup.append(self._start_background_tasks)
         app.on_cleanup.append(self._cleanup_background_tasks)
         app.on_shutdown.append(lambda app: asyncio.create_task(self.shutdown()))
         self.logger.info('Created app! Awaiting dispatch requests.')
         self.ctx.start_time = datetime.now(timezone.utc)
         return app
+    
+    async def health_check(self, request: web.Request) -> web.Response:
+        return web.Response(status=200)
+    
+    async def targets(self, request: web.Request) -> web.Response:
+        """
+        Endpoint that returns json containing information on each of the configured end points
+        """
+        output = {}
+        for target_url, target_ctx in self.ctx.iter_target_contexts():
+            output[target_url] = {
+                'proxies_quarantined':len([x for x in target_ctx.quarantine.values() if x.until > time.time()]),
+                'requests_queued':len(target_ctx.queue)
+            }
+        return web.json_response(data = output, status=200)
 
     async def dispatch_request(self, request: web.Request) -> web.Response:
         payload = await request.json() # Grab requests json
@@ -148,17 +165,16 @@ class DispatcherServer:
         await app["dispatcher"]
         await app["health_checker"]
     
-    def get_next_proxy(self, target_ctx: TargetContext, min_interval: float):
+    def get_next_proxy(self, target_ctx: TargetContext, min_interval: float) -> Tuple[Optional[str], float]:
         eligible_proxies = [
             p for p in self.ctx.proxies
-            if not target_ctx.quarantine[p].permanent
-            and time.time() > target_ctx.quarantine[p].until
+            if time.time() > target_ctx.quarantine[p].until
             and time.time() - target_ctx.last_used[p] >= min_interval
             and p not in target_ctx.in_use_proxies
         ]
         if not eligible_proxies:
-            return None
-        return min(eligible_proxies, key=lambda p: target_ctx.last_used[p])
+            return (None, min([q.until for q in target_ctx.quarantine.values()]))
+        return (min(eligible_proxies, key=lambda p: target_ctx.last_used[p]),0)
     
     async def shutdown(self):
         for task in self._background_tasks:
@@ -192,19 +208,16 @@ class DispatcherServer:
                     continue
                 payload, result_future = target_ctx.queue[0]
                 min_interval = self.config.target_urls[target_url].min_request_interval
-                proxy = self.get_next_proxy(target_ctx, min_interval)
+                proxy, next_available = self.get_next_proxy(target_ctx, min_interval)
                 if proxy:
                     target_ctx.queue.popleft()
                     target_ctx.in_use_proxies.add(proxy)
                     task = asyncio.create_task(self._handle_request(payload, result_future, target_url, proxy))
                     self._background_tasks.add(task)
                     task.add_done_callback(self._background_tasks.discard)
-                elif not any(
-                    not target_ctx.quarantine[p].permanent
-                    for p in self.ctx.proxies
-                ):
+                elif 'max_wait_time' in payload and payload['max_wait_time'] < next_available - time.time():
                     target_ctx.queue.popleft()
-                    result_future.set_result(web.json_response({"error": "All proxies are currently permanently in quarantine"}, status=429))
+                    result_future.set_result(web.json_response({"error": "A proxy will not be released from quarantine before the wait time expires"}, status=429))
             try:
                 await asyncio.sleep(0.1)
             except asyncio.CancelledError as e:
@@ -260,22 +273,26 @@ class DispatcherServer:
             target_ctx.last_used[proxy] = time.time()
             target_ctx.in_use_proxies.discard(proxy)
             if 500 <= status < 600:
-                self.logger.warning(f'Request returned {status} error:\n{result}')
+                self.logger.warning(f'Request returned {status} error:\n{result}.  Retries: {payload["retries"]}')
                 target_ctx.quarantine[proxy].strikes += 1
                 self.ctx.five_hundred_errors +=1
                 if target_ctx.quarantine[proxy].strikes >= self.config.max_quarantine_strikes:
-                    target_ctx.quarantine[proxy].permanent = True
-                else:
-                    target_ctx.quarantine[proxy].until = time.time() + self.config.quarantine_time
+                    self.logger.warning(f'Proxy has exceeded maximum strikes.  Placing it into quarantine for {target_ctx.quarantine[proxy].next_duration} seconds.')
+                    target_ctx.quarantine[proxy].until = time.time() + target_ctx.quarantine[proxy].next_duration
+                    target_ctx.quarantine[proxy].next_duration = target_ctx.quarantine[proxy].next_duration*2
+                    target_ctx.quarantine[proxy].strikes = 0
+                    
                 if retries < self.config.max_retries:
                     payload["retries"] = retries + 1
                     self.ctx.retries += 1
                     target_ctx.queue.appendleft((payload, result_future))
                 else:
+                    self.logger.warning(f'Request exceeded maximum retries.  Passing along 500 error.')
                     sys.stdout.flush()
                     result_future.set_result(web.json_response(result, status=status))
             else:
                 target_ctx.quarantine[proxy].strikes = 0
+                target_ctx.quarantine[proxy].next_duration = max(target_ctx.quarantine[proxy].next_duration/2,2)
                 result_future.set_result(web.json_response(result))
         except Exception as e:
             try:
