@@ -81,7 +81,9 @@ class Client:
         t0 = time.time()
         success = True
         try:
+            self.logger.debug(f'Sending request to dispatcher.  Payload: {payload}')
             async with session.post(f"{self.host}/dispatch", json=payload) as resp:
+                self.logger.debug(f'Got response: {resp.status}')
                 output = await resp.json()
                 return output
         except Exception as e:
@@ -162,6 +164,7 @@ class Client:
                         "method": method,
                         "body": body_factory(value) if (method == 'POST' and body_factory) else None,
                     }
+
                     response = await self._send_single_request(session, payload, on_failure)
                     if response_handler:
                         result = response_handler(response, value) if response_handler else response
