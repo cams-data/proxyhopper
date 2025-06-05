@@ -83,8 +83,9 @@ class Client:
         try:
             self.logger.debug(f'Sending request to dispatcher.  Payload: {payload}')
             async with session.post(f"{self.host}/dispatch", json=payload) as resp:
-                self.logger.debug(f'Got response: {resp.status}')
+                self.logger.debug(f'Got response: {resp.status} - {resp.content_type}')
                 output = await resp.json()
+                self.logger.debug(f'Output: {output}')
                 return output
         except Exception as e:
             success = False
