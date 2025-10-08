@@ -1,8 +1,20 @@
+[build-system]
+requires = [
+  "hatchling",
+  "hatch-vcs"
+]
+build-backend = "hatchling.build"
+
+
 [project]
 name = "proxyhopper"
 description = "Python client for dispatching requests via rotating proxies"
 authors = [{ name = "Your Name", email = "you@example.com" }]
-dependencies = ["aiohttp", "pydantic"]
+dependencies = [
+    "aiohttp~=3.12.7",
+    "pydantic~=2.11.5",
+    "tqdm>=4.48.0",
+    ]
 readme = "README.md"
 requires-python = ">=3.9"
 dynamic = ["version"]
@@ -10,8 +22,12 @@ dynamic = ["version"]
 [tool.hatch.version]
 source = "vcs"
 
+[tool.hatch.version.raw-options]
+root = "../../"
+local_scheme = "no-local-version"
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/"]
+packages = ["src/proxyhopper"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/", "README.md", "LICENSE"]
@@ -29,6 +45,9 @@ dependencies = [
   "pytest-aiohttp",
   "proxyhopper-dispatcher @ {root:parent:uri}/proxyhopper-dispatcher",
 ]
+
+[tool.hatch.envs.hatch-test.env-vars]
+PYTHONPATH = "src"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
