@@ -53,7 +53,7 @@ async def test_do_batch_request(dispatcher_server, test_server):
     def body_builder(item):
         return {"echo": item["value"]}
 
-    def response_handler(response, data):
+    async def response_handler(response, data):
         return response.get("received", {})
 
     results = await client.send_batched_requests_async(
