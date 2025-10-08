@@ -96,7 +96,6 @@ class Client:
 
     async def _send_single_request_async(
             self,
-            session:aiohttp.ClientSession,
             payload:Dict,
             on_failure:Literal['ignore', 'fail']
         ) -> Dict:
@@ -104,11 +103,12 @@ class Client:
         success = True
         try:
             self.logger.debug(f'Sending request to dispatcher.  Payload: {payload}')
-            async with session.post(f"{self.host}/dispatch", json=payload) as resp:
-                self.logger.debug(f'Got response: {resp.status} - {resp.content_type}')
-                output = await resp.json()
-                self.logger.debug(f'Output: {output}')
-                return output
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.host}/dispatch", json=payload) as resp:
+                    self.logger.debug(f'Got response: {resp.status} - {resp.content_type}')
+                    output = await resp.json()
+                    self.logger.debug(f'Output: {output}')
+                    return output
         except Exception as e:
             success = False
             if on_failure == 'fail':
@@ -209,36 +209,34 @@ class Client:
 
         if self.record_statistics:
             self.statistics.record_start()
+        async def worker(key, value):
+            async with semaphore:
+                payload = {
+                    "id": str(uuid.uuid4()),
+                    "target_url": target_url,
+                    "endpoint": endpoint,
+                    "params": param_factory(value) if (param_factory) else None,
+                    "headers": headers,
+                    "method": method,
+                    "body": body_factory(value) if (method == 'POST' and body_factory) else None,
+                }
 
-        async with aiohttp.ClientSession() as session:
-            async def worker(key, value):
-                async with semaphore:
-                    payload = {
-                        "id": str(uuid.uuid4()),
-                        "target_url": target_url,
-                        "endpoint": endpoint,
-                        "params": param_factory(value) if (param_factory) else None,
-                        "headers": headers,
-                        "method": method,
-                        "body": body_factory(value) if (method == 'POST' and body_factory) else None,
-                    }
+                response = await self._send_single_request_async(payload, on_failure)
+                if response_handler:
+                    result = await response_handler(response, value) if response_handler else response
+                    results[key] = result
+                else:
+                    responses[key] = response
 
-                    response = await self._send_single_request_async(session, payload, on_failure)
-                    if response_handler:
-                        result = await response_handler(response, value) if response_handler else response
-                        results[key] = result
-                    else:
-                        responses[key] = response
-
-            tasks = [asyncio.create_task(worker(key, value)) for key, value in data.items()]
-            # await asyncio.gather(*tasks)
-            tasks_completed = 0
-            for task in tqdm.asyncio.tqdm.as_completed(tasks, smoothing=0.1, total=len(data), disable=(progress_reporting != 'bar')):
-                await task
-                # Track tasks completed for progress reporting purposes
-                tasks_completed+=1
-                if progress_reporting == 'text' and tasks_completed%max(len(data)//20,1) == 0:
-                    self.logger.info(f'Completed {tasks_completed}/{len(data)} requests')
+        tasks = [asyncio.create_task(worker(key, value)) for key, value in data.items()]
+        # await asyncio.gather(*tasks)
+        tasks_completed = 0
+        for task in tqdm.asyncio.tqdm.as_completed(tasks, smoothing=0.1, total=len(data), disable=(progress_reporting != 'bar')):
+            await task
+            # Track tasks completed for progress reporting purposes
+            tasks_completed+=1
+            if progress_reporting == 'text' and tasks_completed%max(len(data)//20,1) == 0:
+                self.logger.info(f'Completed {tasks_completed}/{len(data)} requests')
 
         if self.record_statistics:
             self.statistics.record_end()
