@@ -23,6 +23,7 @@ dynamic = ["version"]
 
 [tool.hatch.version]
 source = "vcs"
+tag-pattern = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
 
 [tool.hatch.version.raw-options]
 root = "../../"
