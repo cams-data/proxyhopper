@@ -2,9 +2,7 @@ name: CI on main (release)
 
 on:
     push:
-        branches: [main]
-    pull_request:
-        branches: [main]
+        tags: ["v*"]
 
 jobs:
     test-and-build:
