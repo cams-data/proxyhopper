@@ -5,7 +5,7 @@ import time
 import aiohttp
 import uuid
 import tqdm.asyncio
-from typing import Callable, Dict, List, Literal, Any, Optional, TypeVar, Union, overload
+from typing import Awaitable, Callable, Dict, List, Literal, Any, Optional, TypeVar, Union, overload
 
 T1 = TypeVar('T1')
 T2 = TypeVar('T2')
@@ -165,7 +165,7 @@ class Client:
         data: Dict[T1, dict],
         method: Literal['GET', 'POST'] = 'GET',
         body_factory: Optional[Callable[[dict], Any]] = None,
-        response_handler: Callable[[dict, dict], T2],
+        response_handler: Callable[[dict, dict], Awaitable[T2]],
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
     ) -> Dict[T1, T2]:
@@ -197,7 +197,7 @@ class Client:
         data: Dict[T1, dict],
         method: Literal['GET', 'POST'] = 'GET',
         body_factory: Optional[Callable[[dict], Any]] = None,
-        response_handler: Optional[Callable[[dict, dict], T2]] = None,
+        response_handler: Optional[Callable[[dict, dict], Awaitable[T2]]] = None,
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
     ) -> Union[Dict[T1, dict],Dict[T1, T2]]:
@@ -225,7 +225,7 @@ class Client:
 
                     response = await self._send_single_request_async(session, payload, on_failure)
                     if response_handler:
-                        result = response_handler(response, value) if response_handler else response
+                        result = await response_handler(response, value) if response_handler else response
                         results[key] = result
                     else:
                         responses[key] = response
