@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 class QuarantineEntry(BaseModel):
     """
-    Data class olding data for a quarantined proxy
+    Data class holding data for a quarantined proxy
     """
     until: float = 0
     strikes: int = 0

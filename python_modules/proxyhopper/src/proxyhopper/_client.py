@@ -71,8 +71,30 @@ class Client:
         self.logger.addHandler(handler)
 
         self.logger.info(f"Logger initialized with level {log_level}")
+    
+    def _construct_payload(
+            self,
+            *,
+            target_url:str,
+            endpoint:str,
+            method:Literal['GET', 'POST'],
+            params:Optional[Dict[str,str]] = None,
+            headers:Optional[Dict[str,str]] = None,
+            body:Optional[Dict[str,Any]] = None
 
-    async def _send_single_request(
+    ) -> Dict[str, Any]:
+        payload = {
+            "id": str(uuid.uuid4()),
+            "target_url": target_url,
+            "endpoint": endpoint,
+            "params": params,
+            "headers": headers,
+            "method": method,
+            "body": body,
+        }
+        return payload
+
+    async def _send_single_request_async(
             self,
             session:aiohttp.ClientSession,
             payload:Dict,
@@ -100,8 +122,40 @@ class Client:
             if self.record_statistics:
                 self.statistics.record_attempt(not success, time.time() - t0)
     
+    async def send_single_request_async(
+            self,
+            *,
+            target_url: str,
+            endpoint: str,
+            method: Literal['GET', 'POST'] = 'GET',
+            headers: Optional[Dict] = None,
+            params: Optional[Dict] = None,
+            body: Optional[Any] = None,
+            on_failure:Literal['ignore', 'fail'],
+
+    ) -> Dict:
+        if self.record_statistics:
+            self.statistics.record_start()
+        
+        async with aiohttp.ClientSession() as session:
+            payload = self._construct_payload(
+                target_url=target_url,
+                endpoint=endpoint,
+                method=method,
+                params=params,
+                headers=headers,
+                body=body
+            )
+            response = await self._send_single_request_async(session, payload, on_failure)
+        
+        if self.record_statistics:
+            self.statistics.record_end()
+            self.logger.info(self.statistics.present_report())
+        
+        return response
+    
     @overload
-    async def send_batched_requests(
+    async def send_batched_requests_async(
         self,
         *,
         target_url: str,
@@ -118,7 +172,7 @@ class Client:
         ...
 
     @overload
-    async def send_batched_requests(
+    async def send_batched_requests_async(
         self,
         *,
         target_url: str,
@@ -133,7 +187,7 @@ class Client:
     ) -> Dict[T1, dict]:
         ...
 
-    async def send_batched_requests(
+    async def send_batched_requests_async(
         self,
         *,
         target_url: str,
@@ -169,7 +223,7 @@ class Client:
                         "body": body_factory(value) if (method == 'POST' and body_factory) else None,
                     }
 
-                    response = await self._send_single_request(session, payload, on_failure)
+                    response = await self._send_single_request_async(session, payload, on_failure)
                     if response_handler:
                         result = response_handler(response, value) if response_handler else response
                         results[key] = result
