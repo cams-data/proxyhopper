@@ -1,0 +1,64 @@
+name: CI on main (release)
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+jobs:
+    test-and-build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install Hatch
+              run: pip install hatch hatch-vcs
+
+            - name: Build and Test All Packages
+              run: |
+                  set -eo pipefail
+                  set -x  # Enable debug output for each command
+                  for dir in python_modules/*; do
+                    if [ -f "$dir/pyproject.toml" ]; then
+                      echo "Processing $dir"
+                      cd "$dir"
+
+                      echo "::group::Creating Hatch environment"
+                      hatch env create 2>&1 | tee hatch-env-create.log
+                      echo "::endgroup::"
+
+                      echo "::group::Running tests"
+                      hatch test 2>&1 | tee hatch-test.log
+                      echo "::endgroup::"
+
+                      echo "::group::Building project"
+                      echo "Detected version: $(hatch version)"
+                      hatch build 2>&1 | tee hatch-build.log
+                      echo "::endgroup::"
+
+                      if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+                        echo "::group::Publishing to Test PyPI"
+                        HATCH_INDEX_USER="${{ secrets.TEST_PYPI_USERNAME }}" \
+                        HATCH_INDEX_AUTH="${{ secrets.TEST_PYPI_PASSWORD }}" \
+                        hatch publish --repo test 2>&1 | tee hatch-publish.log
+                        echo "::endgroup::"
+                      fi
+
+                      cd - > /dev/null
+                    fi
+                  done
+            - name: Upload Hatch logs
+              if: failure() # Only upload logs if the step failed
+              uses: actions/upload-artifact@v4
+              with:
+                  name: hatch-logs
+                  path: |
+                      python_modules/**/hatch-*.log
