@@ -2,13 +2,14 @@ from collections import defaultdict, deque
 import os
 import sys
 from typing import Dict, Deque, Generator, List, Literal, Optional, Set, Tuple, Any, Union, overload
+import aiohttp
 from pydantic import BaseModel, Field, PrivateAttr
 from ._config import TargetUrlConfig
 import time
 import asyncio
 import time
 import logging
-from aiohttp import web, ClientSession, ClientTimeout
+from aiohttp import ClientConnectorError, web, ClientSession, ClientTimeout
 from ._config import ProxyhopperConfig, TargetUrlConfig
 from datetime import datetime, timedelta, timezone
 
@@ -222,6 +223,34 @@ class DispatcherServer:
                 await asyncio.sleep(0.1)
             except asyncio.CancelledError as e:
                 return
+    
+    def _setup_retry(
+            self,
+            *,
+            target_ctx:TargetContext,
+            proxy,
+            retries,
+            payload,
+            result_future,
+            result,
+            status
+        ):
+        target_ctx.quarantine[proxy].strikes += 1
+        self.ctx.five_hundred_errors +=1
+        if target_ctx.quarantine[proxy].strikes >= self.config.max_quarantine_strikes:
+            self.logger.warning(f'Proxy has exceeded maximum strikes.  Placing it into quarantine for {target_ctx.quarantine[proxy].next_duration} seconds.')
+            target_ctx.quarantine[proxy].until = time.time() + target_ctx.quarantine[proxy].next_duration
+            target_ctx.quarantine[proxy].next_duration = target_ctx.quarantine[proxy].next_duration*2
+            target_ctx.quarantine[proxy].strikes = 0
+            
+        if retries < self.config.max_retries:
+            payload["retries"] = retries + 1
+            self.ctx.retries += 1
+            target_ctx.queue.appendleft((payload, result_future))
+        else:
+            self.logger.warning(f'Request exceeded maximum retries.  Passing along 500 error.')
+            sys.stdout.flush()
+            result_future.set_result(web.json_response(result, status=status))
 
 
     async def _handle_request(self, payload, result_future, target_url, proxy):
@@ -233,7 +262,11 @@ class DispatcherServer:
             body = payload.get("body")
             timeout_seconds = payload.get("timeout_seconds")
             retries = payload.get("retries", 0)
-
+        except Exception as e:
+            result_future.set_result(web.json_response({"error": str(e), "detail":'Failed to unpack payload'}))
+            self.logger.exception(e)
+            return
+        try:
             full_url = f"{target_url.rstrip('/')}/{endpoint.lstrip('/')}"
             proxy_url = f"http://{proxy}"
             if self._proxies_are_fake:
@@ -274,26 +307,38 @@ class DispatcherServer:
             target_ctx.in_use_proxies.discard(proxy)
             if 500 <= status < 600:
                 self.logger.warning(f'Request returned {status} error:\n{result}.  Retries: {payload["retries"]}')
-                target_ctx.quarantine[proxy].strikes += 1
-                self.ctx.five_hundred_errors +=1
-                if target_ctx.quarantine[proxy].strikes >= self.config.max_quarantine_strikes:
-                    self.logger.warning(f'Proxy has exceeded maximum strikes.  Placing it into quarantine for {target_ctx.quarantine[proxy].next_duration} seconds.')
-                    target_ctx.quarantine[proxy].until = time.time() + target_ctx.quarantine[proxy].next_duration
-                    target_ctx.quarantine[proxy].next_duration = target_ctx.quarantine[proxy].next_duration*2
-                    target_ctx.quarantine[proxy].strikes = 0
-                    
-                if retries < self.config.max_retries:
-                    payload["retries"] = retries + 1
-                    self.ctx.retries += 1
-                    target_ctx.queue.appendleft((payload, result_future))
-                else:
-                    self.logger.warning(f'Request exceeded maximum retries.  Passing along 500 error.')
-                    sys.stdout.flush()
-                    result_future.set_result(web.json_response(result, status=status))
+                self._setup_retry(
+                    target_ctx=target_ctx,
+                    proxy=proxy,
+                    retries=retries,
+                    payload=payload,
+                    result_future=result_future,
+                    result=result,
+                    status=status
+                )
             else:
                 target_ctx.quarantine[proxy].strikes = 0
                 target_ctx.quarantine[proxy].next_duration = max(target_ctx.quarantine[proxy].next_duration/2,2)
                 result_future.set_result(web.json_response(result))
+        except ClientConnectorError as e:
+            # Optionally check if the cause is a ConnectionResetError
+            if isinstance(e.__cause__, ConnectionResetError):
+                self.logger.warning(f"TLS handshake failed. Retries: {payload['retries']}")
+                target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
+                target_ctx.last_used[proxy] = time.time()
+                target_ctx.in_use_proxies.discard(proxy)
+                self._setup_retry(
+                    target_ctx=target_ctx,
+                    proxy=proxy,
+                    retries=retries,
+                    payload=payload,
+                    result_future=result_future,
+                    result={'error':'TLS handshake failed'},
+                    status=400
+                )
+            else:
+                # Re-raise if it's a different connector error
+                raise
         except Exception as e:
             try:
                 target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
