@@ -12,6 +12,7 @@ class ProxyhopperConfig(BaseModel):
     max_quarantine_strikes: int = Field(default=3)
     target_urls: Dict[str, TargetUrlConfig] = Field(default_factory=dict)
     max_retries: int = Field(default=3)
+    health_check_interval: float = Field(default=30)
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path] = "proxyhopper.yaml") -> "ProxyhopperConfig":
