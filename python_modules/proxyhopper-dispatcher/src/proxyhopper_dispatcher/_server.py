@@ -300,7 +300,10 @@ class DispatcherServer:
                 target_ctx.last_used[proxy] = time.time()
                 target_ctx.in_use_proxies.discard(proxy)
                 result_future.set_result(web.json_response({"error": str(e)}))
+                self.logger.error(e)
             except Exception as internal_e:
                 print("Error while handling exception:", internal_e)
                 sys.stdout.flush()
                 result_future.set_result(web.json_response({"error": str(e), "internal": str(internal_e)}))
+                self.logger.error(e)
+                self.logger.error(internal_e)
