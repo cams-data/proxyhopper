@@ -184,7 +184,7 @@ class DispatcherServer:
     async def _health_checker(self):
         while True:
             try:
-                await asyncio.sleep(10)
+                await asyncio.sleep(self.config.health_check_interval)
             except asyncio.CancelledError as e:
                 return
             targets_report = "\n".join(['- ' + target_url + ':\n' + target_ctx.report() for target_url, target_ctx in self.ctx.iter_target_contexts()])
@@ -300,10 +300,10 @@ class DispatcherServer:
                 target_ctx.last_used[proxy] = time.time()
                 target_ctx.in_use_proxies.discard(proxy)
                 result_future.set_result(web.json_response({"error": str(e)}))
-                self.logger.error(e)
+                self.logger.exception(e)
             except Exception as internal_e:
                 print("Error while handling exception:", internal_e)
                 sys.stdout.flush()
                 result_future.set_result(web.json_response({"error": str(e), "internal": str(internal_e)}))
-                self.logger.error(e)
-                self.logger.error(internal_e)
+                self.logger.exception(e)
+                self.logger.exception(internal_e)
