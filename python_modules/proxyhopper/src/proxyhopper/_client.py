@@ -35,12 +35,13 @@ class Client:
         def present_report(self) -> str:
             assert self.t_start is not None
             assert self.t_end is not None
+            avg_wait_time = f'{self._total_wait_time/float(self._attempts):.2f}s' if self._attempts>0 else 'n/a'
             return str(f"""
             Batch Request Statistics:
             Time elapsed: {self.t_end - self.t_start:.2f}s
             Requests sent: {self._attempts}
             Failures: {self._failures}
-            Average wait time: {self._total_wait_time/float(self._attempts):.2f}s
+            Average wait time: {avg_wait_time}
             """).strip()
 
     def __init__(
@@ -107,7 +108,7 @@ class Client:
                 async with session.post(f"{self.host}/dispatch", json=payload) as resp:
                     self.logger.debug(f'Got response: {resp.status} - {resp.content_type}')
                     output = await resp.json()
-                    self.logger.debug(f'Output: {output}')
+                    #self.logger.debug(f'Output: {output}')
                     return output
         except Exception as e:
             success = False
@@ -146,7 +147,7 @@ class Client:
                 headers=headers,
                 body=body
             )
-            response = await self._send_single_request_async(session, payload, on_failure)
+            response = await self._send_single_request_async(payload, on_failure)
         
         if self.record_statistics:
             self.statistics.record_end()
@@ -159,13 +160,14 @@ class Client:
         self,
         *,
         target_url: str,
-        endpoint: str,
-        param_factory: Optional[Callable[[dict], Dict]],
+        endpoint: Optional[str],
+        endpoint_factory: Optional[Callable[[Dict], str]],
+        param_factory: Optional[Callable[[Dict], Dict]],
         headers: Optional[Dict] = None,
-        data: Dict[T1, dict],
+        data: Dict[T1, Dict],
         method: Literal['GET', 'POST'] = 'GET',
-        body_factory: Optional[Callable[[dict], Any]] = None,
-        response_handler: Callable[[dict, dict], Awaitable[T2]],
+        body_factory: Optional[Callable[[Dict], Any]] = None,
+        response_handler: Callable[[Dict, Dict], Awaitable[T2]],
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
     ) -> Dict[T1, T2]:
@@ -176,45 +178,57 @@ class Client:
         self,
         *,
         target_url: str,
-        endpoint: str,
-        param_factory: Optional[Callable[[dict], Dict]],
+        endpoint: Optional[str],
+        endpoint_factory: Optional[Callable[[Dict], str]],
+        param_factory: Optional[Callable[[Dict], Dict]],
         headers: Optional[Dict] = None,
-        data: Dict[T1, dict],
+        data: Dict[T1, Dict],
         method: Literal['GET', 'POST'] = 'GET',
-        body_factory: Optional[Callable[[dict], Any]] = None,
+        body_factory: Optional[Callable[[Dict], Any]] = None,
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
-    ) -> Dict[T1, dict]:
+    ) -> Dict[T1, Dict]:
         ...
 
     async def send_batched_requests_async(
         self,
         *,
         target_url: str,
-        endpoint: str,
-        param_factory: Optional[Callable[[dict], Dict]],
+        endpoint: Optional[str] = None,
+        endpoint_factory: Optional[Callable[[Dict], str]] = None,
+        param_factory: Optional[Callable[[Dict], Dict]],
         headers: Optional[Dict] = None,
-        data: Dict[T1, dict],
+        data: Dict[T1, Dict],
         method: Literal['GET', 'POST'] = 'GET',
-        body_factory: Optional[Callable[[dict], Any]] = None,
-        response_handler: Optional[Callable[[dict, dict], Awaitable[T2]]] = None,
+        body_factory: Optional[Callable[[Dict], Any]] = None,
+        response_handler: Optional[Callable[[Dict, Dict], Awaitable[T2]]] = None,
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
-    ) -> Union[Dict[T1, dict],Dict[T1, T2]]:
+    ) -> Union[Dict[T1, Dict],Dict[T1, T2]]:
         semaphore = asyncio.Semaphore(self.concurrency)
         results: Dict[T1, T2] = {}
         if response_handler:
             results = {}
-        responses: Dict[T1, Dict] = {}        
+        responses: Dict[T1, Dict] = {}       
+
+        if endpoint is None and endpoint_factory is None:
+            raise ValueError(f'endpoint and endpoint_factory parameters cannot both be None.  One must be passed')
+        if endpoint and endpoint_factory:
+            raise ValueError(f'Only one of endpoint and endpoint_factory can be passed to the function')
 
         if self.record_statistics:
             self.statistics.record_start()
         async def worker(key, value):
             async with semaphore:
+
+                endpoint_ = endpoint
+                if endpoint_factory:
+                    endpoint_ = endpoint_factory(value)
+
                 payload = {
                     "id": str(uuid.uuid4()),
                     "target_url": target_url,
-                    "endpoint": endpoint,
+                    "endpoint": endpoint_,
                     "params": param_factory(value) if (param_factory) else None,
                     "headers": headers,
                     "method": method,

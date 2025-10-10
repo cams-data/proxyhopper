@@ -17,7 +17,7 @@ def proxyhopper_config():
         max_quarantine_strikes=2,
         max_retries=1,
         target_urls={
-            "https://httpbin.org": TargetUrlConfig(min_request_interval=0)
+            "https://postman-echo.com": TargetUrlConfig(min_request_interval=0)
         }
     )
 
@@ -32,7 +32,7 @@ async def test_client(proxyhopper_config):
 @pytest.mark.asyncio
 async def test_dispatch_success(test_client):
     payload = {
-        "target_url": "https://httpbin.org",
+        "target_url": "https://postman-echo.com",
         "endpoint": "get",
         "method": "GET",
         "params": {},
@@ -55,12 +55,12 @@ async def test_targets(test_client):
     assert resp.status == 200
     assert resp.content_type == 'application/json'
     json = await resp.json()
-    assert [x for x in json][0] == 'https://httpbin.org'
+    assert [x for x in json][0] == 'https://postman-echo.com'
 
 @pytest.mark.asyncio
 async def test_quarantine_on_500(test_client):
     payload = {
-        "target_url": "https://httpbin.org",
+        "target_url": "https://postman-echo.com",
         "endpoint": "status/500",
         "method": "GET",
         "params": {},
@@ -80,13 +80,13 @@ async def test_quarantine_on_500(test_client):
 
     # Ensure proxy will have 8 second next duration
     ctx = test_client.server.app["dispatcher"].get_coro().cr_frame.f_locals["self"].ctx
-    proxy_status = ctx["https://httpbin.org"].quarantine["123.123.123.123:8800"]
+    proxy_status = ctx["https://postman-echo.com"].quarantine["123.123.123.123:8800"]
     assert proxy_status.next_duration == 8
 
 @pytest.mark.asyncio
 async def test_recover_from_quarantine(test_client, proxyhopper_config):
     payload = {
-        "target_url": "https://httpbin.org",
+        "target_url": "https://postman-echo.com",
         "endpoint": "status/500",
         "method": "GET",
         "params": {},
@@ -100,11 +100,11 @@ async def test_recover_from_quarantine(test_client, proxyhopper_config):
     # Check temporary quarantine
     ctx = test_client.server.app["dispatcher"].get_coro().cr_frame.f_locals["self"].ctx
     await asyncio.sleep(0.2)
-    assert ctx["https://httpbin.org"].quarantine["123.123.123.123:8800"].next_duration == 4
+    assert ctx["https://postman-echo.com"].quarantine["123.123.123.123:8800"].next_duration == 4
 
     # Make correct request
     payload = {
-        "target_url": "https://httpbin.org",
+        "target_url": "https://postman-echo.com",
         "endpoint": "get",
         "method": "GET",
         "params": {},
@@ -117,4 +117,4 @@ async def test_recover_from_quarantine(test_client, proxyhopper_config):
     # Check temporary quarantine
     ctx = test_client.server.app["dispatcher"].get_coro().cr_frame.f_locals["self"].ctx
     await asyncio.sleep(0.2)
-    assert ctx["https://httpbin.org"].quarantine["123.123.123.123:8800"].next_duration == 2
+    assert ctx["https://postman-echo.com"].quarantine["123.123.123.123:8800"].next_duration == 2
