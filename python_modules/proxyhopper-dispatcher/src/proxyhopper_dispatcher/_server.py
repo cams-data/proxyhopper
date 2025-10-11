@@ -9,7 +9,7 @@ import time
 import asyncio
 import time
 import logging
-from aiohttp import ClientConnectorError, web, ClientSession, ClientTimeout
+from aiohttp import ClientConnectorError, ServerDisconnectedError, web, ClientSession, ClientTimeout
 from ._config import ProxyhopperConfig, TargetUrlConfig
 from datetime import datetime, timedelta, timezone
 
@@ -339,6 +339,20 @@ class DispatcherServer:
             else:
                 # Re-raise if it's a different connector error
                 raise
+        except ServerDisconnectedError as e:
+            self.logger.warning("Server disconnected unexpectedly.")
+            target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
+            target_ctx.last_used[proxy] = time.time()
+            target_ctx.in_use_proxies.discard(proxy)
+            self._setup_retry(
+                target_ctx=target_ctx,
+                proxy=proxy,
+                retries=retries,
+                payload=payload,
+                result_future=result_future,
+                result={'error':'Server disconnected unexpectedly'},
+                status=400
+            )
         except Exception as e:
             try:
                 target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
