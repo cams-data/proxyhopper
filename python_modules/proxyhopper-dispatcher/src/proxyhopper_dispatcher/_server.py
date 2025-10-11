@@ -320,27 +320,11 @@ class DispatcherServer:
                 target_ctx.quarantine[proxy].strikes = 0
                 target_ctx.quarantine[proxy].next_duration = max(target_ctx.quarantine[proxy].next_duration/2,2)
                 result_future.set_result(web.json_response(result))
-        except ClientConnectorError as e:
-            # Optionally check if the cause is a ConnectionResetError
-            if isinstance(e.__cause__, ConnectionResetError):
-                self.logger.warning(f"TLS handshake failed. Retries: {payload['retries']}")
-                target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
-                target_ctx.last_used[proxy] = time.time()
-                target_ctx.in_use_proxies.discard(proxy)
-                self._setup_retry(
-                    target_ctx=target_ctx,
-                    proxy=proxy,
-                    retries=retries,
-                    payload=payload,
-                    result_future=result_future,
-                    result={'error':'TLS handshake failed'},
-                    status=400
-                )
-            else:
-                # Re-raise if it's a different connector error
-                raise
-        except ServerDisconnectedError as e:
-            self.logger.warning("Server disconnected unexpectedly.")
+        except (aiohttp.ClientConnectorError,
+            aiohttp.ClientProxyConnectionError,
+            aiohttp.ServerDisconnectedError,
+            asyncio.TimeoutError) as e:
+            self.logger.warning(e)
             target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
             target_ctx.last_used[proxy] = time.time()
             target_ctx.in_use_proxies.discard(proxy)
@@ -350,7 +334,7 @@ class DispatcherServer:
                 retries=retries,
                 payload=payload,
                 result_future=result_future,
-                result={'error':'Server disconnected unexpectedly'},
+                result={'error':str(e)},
                 status=400
             )
         except Exception as e:
