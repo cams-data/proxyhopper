@@ -119,6 +119,7 @@ class DispatcherServer:
         app.router.add_post("/dispatch", self.dispatch_request)
         app.router.add_get("/health-check", self.health_check)
         app.router.add_get("/targets", self.targets)
+        app.router.add_get("/target-registered", self.target_registered)
         app.on_startup.append(self._start_background_tasks)
         app.on_cleanup.append(self._cleanup_background_tasks)
         app.on_shutdown.append(lambda app: asyncio.create_task(self.shutdown()))
@@ -140,6 +141,15 @@ class DispatcherServer:
                 'requests_queued':len(target_ctx.queue)
             }
         return web.json_response(data = output, status=200)
+    
+    async def target_registered(self, request: web.Request) -> web.Response:
+        """
+        Endpoint that confirms if the supplied target url is registered to the dispatcher
+        """
+        payload = request.query # Grab requests json
+        if 'target_url' not in payload:
+            return web.json_response({'error':'"target_url" missing from params'}, status=400)
+        return web.json_response({payload.get('target_url'):payload.get('target_url') in self.ctx.target_urls})
 
     async def dispatch_request(self, request: web.Request) -> web.Response:
         payload = await request.json() # Grab requests json
@@ -323,7 +333,8 @@ class DispatcherServer:
         except (aiohttp.ClientConnectorError,
             aiohttp.ClientProxyConnectionError,
             aiohttp.ServerDisconnectedError,
-            asyncio.TimeoutError) as e:
+            asyncio.TimeoutError,
+            aiohttp.ClientPayloadError) as e:
             self.logger.warning(e)
             target_ctx = self.ctx[target_url] # Set target_ctx in case it was not set before the earlier exception occurred
             target_ctx.last_used[proxy] = time.time()
