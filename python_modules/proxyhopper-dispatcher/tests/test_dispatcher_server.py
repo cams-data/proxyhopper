@@ -58,6 +58,14 @@ async def test_targets(test_client):
     assert [x for x in json][0] == 'https://postman-echo.com'
 
 @pytest.mark.asyncio
+async def test_target_registered(test_client):
+    resp = await test_client.get("/target-registered", params={'target_url':'https://postman-echo.com'})
+    assert resp.status == 200
+    assert resp.content_type == 'application/json'
+    json = await resp.json()
+    assert json['https://postman-echo.com'] == True
+
+@pytest.mark.asyncio
 async def test_quarantine_on_500(test_client):
     payload = {
         "target_url": "https://postman-echo.com",
