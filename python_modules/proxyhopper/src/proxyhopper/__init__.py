@@ -1,3 +1,3 @@
-from ._client import Client
+from ._client import ProxyHopperClient
 
-__all__ = ["Client"]
+__all__ = ["ProxyHopperClient"]

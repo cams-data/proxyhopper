@@ -3,7 +3,7 @@ pytest_plugins = ["pytest_asyncio"]
 import pytest
 import asyncio
 from aiohttp import web
-from proxyhopper import Client
+from proxyhopper import ProxyHopperClient
 from proxyhopper_dispatcher import DispatcherServer
 from proxyhopper_dispatcher import ProxyhopperConfig, TargetUrlConfig
 import tempfile
@@ -43,9 +43,9 @@ async def dispatcher_server(aiohttp_server, test_server):
 @pytest.mark.asyncio
 async def test_do_batch_request(dispatcher_server, test_server):
     dispatcher_url = f"http://localhost:{dispatcher_server.port}"
-    client = Client(host=dispatcher_url, concurrency=2)
+    client = ProxyHopperClient(host=dispatcher_url, concurrency=2)
 
-    test_data = {i :{"value": i} for i in range(5)}
+    test_data = [{"value": i} for i in range(5)]
 
     def params_builder(item):
         return {}
@@ -53,7 +53,7 @@ async def test_do_batch_request(dispatcher_server, test_server):
     def body_builder(item):
         return {"echo": item["value"]}
 
-    async def response_handler(response, data):
+    async def response_handler(index, response):
         return response.get("received", {})
 
     results = await client.send_batched_requests_async(
@@ -68,7 +68,7 @@ async def test_do_batch_request(dispatcher_server, test_server):
         on_failure='ignore'
     )
 
-    assert isinstance(results, dict)
+    assert isinstance(results, list)
     assert len(results) == 5
-    for key in results:
-        assert results[key]["echo"] == test_data[key]["value"]
+    for i in range(len(test_data)):
+        assert results[i]["echo"] == test_data[i]["value"]

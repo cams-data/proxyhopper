@@ -10,7 +10,7 @@ from typing import Awaitable, Callable, Dict, List, Literal, Any, Optional, Type
 T1 = TypeVar('T1')
 T2 = TypeVar('T2')
 
-class Client:
+class ProxyHopperClient:
 
     class BatchedRequestStatistics():
         
@@ -56,7 +56,7 @@ class Client:
         self.concurrency = concurrency
         self.record_statistics = record_statistics
         if self.record_statistics:
-            self.statistics = Client.BatchedRequestStatistics()
+            self.statistics = ProxyHopperClient.BatchedRequestStatistics()
 
         # Setup logger
         self.logger = logging.getLogger('proxyhopper')
@@ -161,16 +161,16 @@ class Client:
         *,
         target_url: str,
         endpoint: Optional[str],
-        endpoint_factory: Optional[Callable[[Dict], str]],
-        param_factory: Optional[Callable[[Dict], Dict]],
+        endpoint_factory: Optional[Callable[[T1], str]],
+        param_factory: Optional[Callable[[T1], Dict]],
         headers: Optional[Dict] = None,
-        data: Dict[T1, Dict],
+        data: List[T1],
         method: Literal['GET', 'POST'] = 'GET',
-        body_factory: Optional[Callable[[Dict], Any]] = None,
-        response_handler: Callable[[Dict, Dict], Awaitable[T2]],
+        body_factory: Optional[Callable[[T1], Any]] = None,
+        response_handler: Callable[[int, Dict], Awaitable[T2]],
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
-    ) -> Dict[T1, T2]:
+    ) -> List[T2|None]:
         ...
 
     @overload
@@ -179,15 +179,15 @@ class Client:
         *,
         target_url: str,
         endpoint: Optional[str],
-        endpoint_factory: Optional[Callable[[Dict], str]],
-        param_factory: Optional[Callable[[Dict], Dict]],
+        endpoint_factory: Optional[Callable[[T1], str]],
+        param_factory: Optional[Callable[[T1], Dict]],
         headers: Optional[Dict] = None,
-        data: Dict[T1, Dict],
+        data: List[T1],
         method: Literal['GET', 'POST'] = 'GET',
-        body_factory: Optional[Callable[[Dict], Any]] = None,
+        body_factory: Optional[Callable[[T1], Any]] = None,
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
-    ) -> Dict[T1, Dict]:
+    ) -> List[Dict]:
         ...
 
     async def send_batched_requests_async(
@@ -195,21 +195,21 @@ class Client:
         *,
         target_url: str,
         endpoint: Optional[str] = None,
-        endpoint_factory: Optional[Callable[[Dict], str]] = None,
-        param_factory: Optional[Callable[[Dict], Dict]],
+        endpoint_factory: Optional[Callable[[T1], str]] = None,
+        param_factory: Optional[Callable[[T1], Dict]],
         headers: Optional[Dict] = None,
-        data: Dict[T1, Dict],
+        data: List[T1],
         method: Literal['GET', 'POST'] = 'GET',
-        body_factory: Optional[Callable[[Dict], Any]] = None,
-        response_handler: Optional[Callable[[Dict, Dict], Awaitable[T2]]] = None,
+        body_factory: Optional[Callable[[T1], Any]] = None,
+        response_handler: Optional[Callable[[int, Dict], Awaitable[T2]]] = None,
         on_failure:Literal['ignore', 'fail'],
         progress_reporting:Literal['bar','text','off'] = 'text'
-    ) -> Union[Dict[T1, Dict],Dict[T1, T2]]:
+    ) -> Union[List[Dict],List[T2|None]]:
         semaphore = asyncio.Semaphore(self.concurrency)
-        results: Dict[T1, T2] = {}
+        results: List[T2|None] = [None]*len(data)
         if response_handler:
-            results = {}
-        responses: Dict[T1, Dict] = {}       
+            results = [None]*len(data)
+        responses: List[Dict] = [{}]*len(data)
 
         if endpoint is None and endpoint_factory is None:
             raise ValueError(f'endpoint and endpoint_factory parameters cannot both be None.  One must be passed')
@@ -218,31 +218,31 @@ class Client:
 
         if self.record_statistics:
             self.statistics.record_start()
-        async def worker(key, value):
+        async def worker(index:int, item:T1):
             async with semaphore:
 
                 endpoint_ = endpoint
                 if endpoint_factory:
-                    endpoint_ = endpoint_factory(value)
+                    endpoint_ = endpoint_factory(item)
 
                 payload = {
                     "id": str(uuid.uuid4()),
                     "target_url": target_url,
                     "endpoint": endpoint_,
-                    "params": param_factory(value) if (param_factory) else None,
+                    "params": param_factory(item) if (param_factory) else None,
                     "headers": headers,
                     "method": method,
-                    "body": body_factory(value) if (method == 'POST' and body_factory) else None,
+                    "body": body_factory(item) if (method == 'POST' and body_factory) else None,
                 }
 
                 response = await self._send_single_request_async(payload, on_failure)
                 if response_handler:
-                    result = await response_handler(response, value) if response_handler else response
-                    results[key] = result
+                    result = await response_handler(index, response) if response_handler else response
+                    results[index] = result
                 else:
-                    responses[key] = response
+                    responses[index] = response
 
-        tasks = [asyncio.create_task(worker(key, value)) for key, value in data.items()]
+        tasks = [asyncio.create_task(worker(index, item)) for index, item in enumerate(data)]
         # await asyncio.gather(*tasks)
         tasks_completed = 0
         for task in tqdm.asyncio.tqdm.as_completed(tasks, smoothing=0.1, total=len(data), disable=(progress_reporting != 'bar')):
